@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Davin Ramadhan - The Doctor's IT Lab</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+    
+    <script src="https://unpkg.com/lucide@latest"></script>
+
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
+</head>
+<body class="bg-slate-950 text-white overflow-x-hidden font-sans selection:bg-yellow-400 selection:text-blue-900">
+
+    <div id="root"></div>
+
+    <script>
+        const { useState, useEffect, createElement: e } = React;
+
+        // --- SISTEM GLOBAL KONFIGURASI FIREBASE ---
+        // Catatan: Ganti objek kosong di bawah ini dengan kredibel/config Firebase Anda jika diperlukan
+        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {
+            apiKey: "CONTOH_API_KEY",
+            authDomain: "portfolio-anda.firebaseapp.com",
+            projectId: "portfolio-anda",
+            storageBucket: "portfolio-anda.appspot.com",
+            messagingSenderId: "123456789",
+            appId: "1:1234:web:abcd"
+        };
+
+        // Inisialisasi Firebase menggunakan modul Compat (Global browser safety)
+        const app = firebase.initializeApp(firebaseConfig);
+        const auth = firebase.auth();
+        const db = firebase.firestore();
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'davin-vr46-v4';
+
+        // Helper Komponen khusus untuk menangani Lucide Icons secara aman tanpa JSX compiler
+        const Icon = ({ name, size = 24, className = "" }) => {
+            const [svgHtml, setSvgHtml] = useState("");
+
+            useEffect(() => {
+                const renderIcon = () => {
+                    if (window.lucide && window.lucide.icons[name]) {
+                        const svg = window.lucide.createSvg(window.lucide.icons[name], {
+                            width: size,
+                            height: size,
+                            class: className
+                        });
+                        setSvgHtml(svg);
+                        return true;
+                    }
+                    return false;
+                };
+
+                if (!renderIcon()) {
+                    const interval = setInterval(() => { if (renderIcon()) clearInterval(interval); }, 50);
+                    const timeout = setTimeout(() => clearInterval(interval), 3000);
+                    return () => { clearInterval(interval); clearTimeout(timeout); };
+                }
+            }, [name, size, className]);
+
+            if (!svgHtml) {
+                return e("span", { className: `inline-block animate-pulse bg-slate-800 rounded`, style: { width: size, height: size } });
+            }
+            return e("span", { dangerouslySetInnerHTML: { __html: svgHtml }, className: "inline-flex items-center justify-center" });
+        };
+
+        // --- APLIKASI REACT UTAMA ---
+        const App = () => {
+          const [isMenuOpen, setIsMenuOpen] = useState(false);
+          const [user, setUser] = useState(null);
+          const [notes, setNotes] = useState([]);
+          const [newNote, setNewNote] = useState({ name: '', content: '' });
+          const [isSubmitting, setIsSubmitting] = useState(false);
+
+          const colors = {
+            rossiYellow: '#D6FF00',
+            rossiBlue: '#002B5B',
+            rossiDark: '#050B14',
+          };
+
+          // Autentikasi Firebase
+          useEffect(() => {
+            const initAuth = async () => {
+              try {
+                if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                  await auth.signInWithCustomToken(__initial_auth_token);
+                } else {
+                  await auth.signInAnonymously();
+                }
+              } catch (err) { console.error("Auth error:", err); }
+            };
+            initAuth();
+            const unsubscribe = auth.onAuthStateChanged(setUser);
+            return () => unsubscribe();
+          }, []);
+
+          // Sinkronisasi Data Firestore (Pit Notes)
+          useEffect(() => {
+            if (!user) return;
+            const notesRef = db.collection('artifacts').doc(appId).collection('public').doc('data').collection('pit_notes');
+            
+            const unsubscribe = notesRef.onSnapshot((snapshot) => {
+              const data = snapshot.docs.map(doc => ({
+                id: doc.id,
+                ...doc.data()
+              })).sort((a, b) => {
+                 const aTime = a.createdAt?.seconds || 0;
+                 const bTime = b.createdAt?.seconds || 0;
+                 return bTime - aTime;
+              });
+              setNotes(data);
+            }, (error) => console.error("Firestore error:", error));
+            
+            return () => unsubscribe();
+          }, [user]);
+
+          // Submit Note Baru
+          const handleSubmitNote = async (e) => {
+            e.preventDefault();
+            if (!user || !newNote.name || !newNote.content) return;
+            setIsSubmitting(true);
+            try {
+              const notesRef = db.collection('artifacts').doc(appId).collection('public').doc('data').collection('pit_notes');
+              await notesRef.add({
+                name: newNote.name,
+                content: newNote.content,
+                createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+                userId: user.uid
+              });
+              setNewNote({ name: '', content: '' });
+            } catch (err) { console.error("Error submitting note:", err); } finally { setIsSubmitting(false); }
+          };
+
+          const skillDetails = [
+            { title: 'Cisco Networking', icon: 'Network', desc: 'Mastering the line.', detail: 'Ahli dalam konfigurasi Routing & Switching menggunakan perangkat Cisco. Fokus pada segmentasi VLAN, keamanan port, dan optimasi jalur data untuk memastikan network latency tetap rendah, layaknya memilih racing line yang sempurna di sirkuit.' },
+            { title: 'Hardware Restoration', icon: 'Wrench', desc: 'Engine rebuild expert.', detail: 'Spesialis dalam diagnosa kerusakan hardware, perakitan PC high-end, hingga penggantian komponen kritis. Mengutamakan airflow dan manajemen suhu agar sistem tetap stabil meski dipaksa bekerja pada limit tertinggi (overclocking/heavy load).' },
+            { title: 'System Optimization', icon: 'Cpu', desc: 'Tuning for performance.', detail: 'Optimasi Sistem Operasi (Windows/Linux) melalui manajemen registry, debloating, dan alokasi resource yang efisien. Menjamin performa software berjalan mulus tanpa bottleneck, serupa dengan fine-tuning ECU pada motor balap.' },
+            { title: 'Physical Infrastructure', icon: 'PenTool', desc: 'Seamless connectivity.', detail: 'Terampil dalam instalasi kabel UTP/STP dengan standar terminasi tinggi (TIA/EIA). Memastikan integritas fisik jaringan tetap terjaga dari interferensi sinyal, memberikan jaminan koneksi yang andal untuk transmisi data skala besar.' }
+          ];
+
+          return e("div", { className: "min-h-screen text-white overflow-x-hidden bg-slate-950 font-sans selection:bg-yellow-400 selection:text-blue-900" },
+            
+            // Background Carbon Fibre Decor
+            e("div", { className: "fixed inset-0 opacity-10 pointer-events-none z-0", style: { backgroundImage: `url
